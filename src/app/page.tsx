@@ -26,9 +26,9 @@ export default function SlackTaskReporter() {
     const generateMessage = () => {
         const message = `${timeRange}
 【やったこと】
-${completedTasks}
+- ${completedTasks}
 【次にやること】
-${nextTasks}`
+- ${nextTasks}`
         setGeneratedMessage(message)
     }
 
