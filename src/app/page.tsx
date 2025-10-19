@@ -11,14 +11,18 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { ClipboardCopy, Clock, Play, Square } from "lucide-react"
+import { ClipboardCopy, Clock } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const DURATION_PRESETS = [
-  { label: "いまから15分", minutes: 15 },
-  { label: "いまから30分", minutes: 30 },
-  { label: "いまから45分", minutes: 45 },
-  { label: "いまから1時間", minutes: 60 },
+  { label: "5分", minutes: 5 },
+  { label: "10分", minutes: 10 },
+  { label: "15分", minutes: 15 },
+  { label: "20分", minutes: 20 },
+  { label: "25分", minutes: 25 },
+  { label: "30分", minutes: 30 },
+  { label: "45分", minutes: 45 },
+  { label: "1時間", minutes: 60 },
 ]
 
 
@@ -79,11 +83,9 @@ const formatTaskBlock = (input: string) => {
 export default function SlackTaskReporter() {
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
-  const [completedTasks, setCompletedTasks] = useState("")
   const [nextTasks, setNextTasks] = useState("")
-  const [isEditingTime, setIsEditingTime] = useState(false)
-  const [editStartTime, setEditStartTime] = useState("")
-  const [editEndTime, setEditEndTime] = useState("")
+  const [mustTasks, setMustTasks] = useState("")
+  const [haveToTasks, setHaveToTasks] = useState("")
   const { toast } = useToast()
 
   useEffect(() => {
@@ -98,8 +100,9 @@ export default function SlackTaskReporter() {
         const data = JSON.parse(currentData)
         setStartTime(data.startTime || defaultStart)
         setEndTime(data.endTime || formatTimeForInput(defaultEnd))
-        setCompletedTasks(data.completedTasks || "")
         setNextTasks(data.nextTasks || "")
+        setMustTasks(data.mustTasks || "")
+        setHaveToTasks(data.haveToTasks || "")
       } catch (error) {
         console.error('自動保存データの読み込みに失敗しました:', error)
         setStartTime(defaultStart)
@@ -138,8 +141,9 @@ export default function SlackTaskReporter() {
     const currentData = {
       startTime,
       endTime,
-      completedTasks,
       nextTasks,
+      mustTasks,
+      haveToTasks,
       lastSaved: new Date().toISOString()
     }
 
@@ -148,7 +152,7 @@ export default function SlackTaskReporter() {
     } catch (error) {
       console.error('自動保存に失敗しました:', error)
     }
-  }, [startTime, endTime, completedTasks, nextTasks])
+  }, [startTime, endTime, nextTasks, mustTasks, haveToTasks])
 
   const formattedRange = useMemo(() => {
     if (!startTime || !endTime) return ""
@@ -204,77 +208,57 @@ export default function SlackTaskReporter() {
     setEndTime(adjusted)
   }
 
-  const startTracking = () => {
-    const now = new Date()
-    setActualStartTime(formatTimeForInput(now))
-    setIsTracking(true)
-    toast({
-      title: "作業開始",
-      description: "時間追跡を開始しました。",
-    })
+  const generateTodoList = useMemo(() => {
+    const today = formatDateDisplay(formatDateForInput(new Date()))
+    const mustFormatted = mustTasks.trim() ? formatTaskBlock(mustTasks) : ""
+    const haveToFormatted = haveToTasks.trim() ? formatTaskBlock(haveToTasks) : ""
+    
+    let todoList = `📅 ${today}\n\ntodo`
+    
+    if (mustFormatted) {
+      todoList += `\n- must\n${mustFormatted.split('\n').map(line => `  ${line}`).join('\n')}`
+    }
+    
+    if (haveToFormatted) {
+      todoList += `\n- have to\n${haveToFormatted.split('\n').map(line => `  ${line}`).join('\n')}`
+    }
+    
+    return todoList
+  }, [mustTasks, haveToTasks])
+
+  const copyTodoList = async () => {
+    try {
+      await navigator.clipboard.writeText(generateTodoList)
+      toast({
+        title: "コピーしました",
+        description: "ToDoリストがクリップボードにコピーされました。",
+      })
+    } catch (err) {
+      console.error("コピーに失敗しました: ", err)
+      toast({
+        title: "エラー",
+        description: "コピーに失敗しました。",
+        variant: "destructive",
+      })
+    }
   }
 
-  const stopTracking = () => {
-    const now = new Date()
-    setActualEndTime(formatTimeForInput(now))
-    setIsTracking(false)
-    toast({
-      title: "作業終了",
-      description: "時間追跡を終了しました。",
-    })
-  }
 
-  const startTimeEdit = () => {
-    setEditStartTime(startTime)
-    setEditEndTime(endTime)
-    setIsEditingTime(true)
-  }
-
-  const saveTimeEdit = () => {
-    setStartTime(editStartTime)
-    setEndTime(editEndTime)
-    setIsEditingTime(false)
-    toast({
-      title: "時間を更新しました",
-      description: "時間が修正されました。",
-    })
-  }
-
-  const cancelTimeEdit = () => {
-    setIsEditingTime(false)
-  }
 
 
   const generateMessage = useMemo(() => {
-    const today = formatDateDisplay(formatDateForInput(new Date()))
     const timeRange = `${startTime}〜${endTime}`
-    const actualTimeInfo = actualStartTime && actualEndTime ? `\n【実際の時間】${actualStartTime}〜${actualEndTime}` : ""
     
-    // 作業中の時のみステータスを表示
-    const statusInfo = isTracking ? " 🔄 作業中" : ""
-    
-    const message = `━━━━━━━━━━━━━━━━━━━━━━
-📅 ${today}
-⏰ ${timeRange}${statusInfo}${actualTimeInfo}
-━━━━━━━━━━━━━━━━━━━━━━
-
-【やったこと】
-${formatTaskBlock(completedTasks)}
+    const message = `⏰ ${timeRange}
 
 【次にやること】
 ${formatTaskBlock(nextTasks)}`
     return message
-  }, [startTime, endTime, actualStartTime, actualEndTime, isTracking, completedTasks, nextTasks])
+  }, [startTime, endTime, nextTasks])
 
   const updateTasksAfterCopy = () => {
-    // 「次にやること」を「やったこと」に移動
-    setCompletedTasks(nextTasks)
+    // 「次にやること」をクリア
     setNextTasks("")
-    
-    // 作業完了時の自動処理
-    if (isTracking) {
-      stopTracking()
-    }
   }
 
   const copyToClipboard = async () => {
@@ -335,9 +319,61 @@ ${formatTaskBlock(nextTasks)}`
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-4">
-      <h1 className="text-2xl font-bold text-center">作業報告くん</h1>
+    <div className="max-w-7xl mx-auto p-6">
+      <h1 className="text-2xl font-bold text-center mb-6">作業報告くん</h1>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
+        {/* ToDoリストマスター */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="rounded-md border border-gray-200 p-4 shadow-sm">
+            <h2 className="text-lg font-semibold mb-3">ToDoリスト</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-red-600 mb-2">Must（必須）</label>
+                <Textarea
+                  placeholder="- アイドルナビ&#10;  - 微修正10月"
+                  value={mustTasks}
+                  onChange={(event) => setMustTasks(event.target.value)}
+                  onKeyDown={(event) => handleTaskKeyDown(event, mustTasks, setMustTasks)}
+                  className="min-h-48 font-mono text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-blue-600 mb-2">Have to（やりたい）</label>
+                <Textarea
+                  placeholder="- アイドルナビ&#10;  - オーディションリクエスト"
+                  value={haveToTasks}
+                  onChange={(event) => setHaveToTasks(event.target.value)}
+                  onKeyDown={(event) => handleTaskKeyDown(event, haveToTasks, setHaveToTasks)}
+                  className="min-h-48 font-mono text-sm"
+                />
+              </div>
+            </div>
+            
+            <div className="relative mt-4 rounded-md bg-gray-100 p-6">
+              <pre className="whitespace-pre-wrap text-sm leading-relaxed font-mono">{generateTodoList}</pre>
+              <Button
+                onClick={copyTodoList}
+                className="absolute top-2 right-2"
+                size="icon"
+                variant="ghost"
+                title="コピー"
+              >
+                <ClipboardCopy className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <p className="text-xs text-muted-foreground mt-2">
+              コピーして「次にやること」に貼り付け。フォーマットは自動で適用されます。
+            </p>
+          </div>
+        </div>
+
+        {/* メイン作業エリア */}
+        <div className="lg:col-span-3 space-y-4">
       <section className="space-y-3 rounded-md border border-gray-200 p-3 shadow-sm">
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -346,48 +382,17 @@ ${formatTaskBlock(nextTasks)}`
           </div>
 
 
-          {isEditingTime ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-xs text-muted-foreground">開始</span>
-                <Input
-                  type="time"
-                  className="flex-1"
-                  value={editStartTime}
-                  onChange={(event) => setEditStartTime(event.target.value)}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-xs text-muted-foreground">終了</span>
-                <Input
-                  type="time"
-                  className="flex-1"
-                  value={editEndTime}
-                  onChange={(event) => setEditEndTime(event.target.value)}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={saveTimeEdit}>
-                  保存
-                </Button>
-                <Button variant="outline" size="sm" onClick={cancelTimeEdit}>
-                  キャンセル
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-xs text-muted-foreground">開始</span>
-                <Input
-                  type="time"
-                  className="flex-1"
-                  value={startTime}
-                  onChange={(event) => setStartTime(event.target.value)}
-                />
-                <Button variant="outline" size="sm" onClick={setCurrentTimeAsStart}>
-                  <Clock className="h-4 w-4" />
-                </Button>
+          <div className="flex items-center gap-2">
+            <span className="w-12 text-xs text-muted-foreground">開始</span>
+            <Input
+              type="time"
+              className="flex-1"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+            />
+            <Button variant="outline" size="sm" onClick={setCurrentTimeAsStart}>
+              <Clock className="h-4 w-4" />
+            </Button>
                 <div className="flex gap-1">
                   <Button
                     size="sm"
@@ -438,19 +443,19 @@ ${formatTaskBlock(nextTasks)}`
                     +30分
                   </Button>
                 </div>
-              </div>
+          </div>
 
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-xs text-muted-foreground">終了</span>
-                <Input
-                  type="time"
-                  className="flex-1"
-                  value={endTime}
-                  onChange={(event) => setEndTime(event.target.value)}
-                />
-                <Button variant="outline" size="sm" onClick={setCurrentTimeAsEnd}>
-                  <Clock className="h-4 w-4" />
-                </Button>
+          <div className="flex items-center gap-2">
+            <span className="w-12 text-xs text-muted-foreground">終了</span>
+            <Input
+              type="time"
+              className="flex-1"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+            />
+            <Button variant="outline" size="sm" onClick={setCurrentTimeAsEnd}>
+              <Clock className="h-4 w-4" />
+            </Button>
                 <div className="flex gap-1">
                   <Button
                     size="sm"
@@ -501,71 +506,31 @@ ${formatTaskBlock(nextTasks)}`
                     +30分
                   </Button>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {DURATION_PRESETS.map((preset) => (
-            <Button key={preset.minutes} size="sm" variant="secondary" onClick={() => setRangeFromNow(preset.minutes)}>
-              {preset.label}
-            </Button>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
-          <Button
-            variant={isTracking ? "destructive" : "default"}
-            size="sm"
-            onClick={isTracking ? stopTracking : startTracking}
-          >
-            {isTracking ? (
-              <>
-                <Square className="h-4 w-4 mr-1" />
-                作業終了
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-1" />
-                作業開始
-              </>
-            )}
-          </Button>
-          <Button variant="outline" size="sm" onClick={startTimeEdit}>
-            時間を編集
-          </Button>
-        </div>
-
-        {actualStartTime && actualEndTime && (
-          <div className="text-xs text-muted-foreground">
-            実際の時間: {actualStartTime}〜{actualEndTime}
           </div>
-        )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-2">期間設定（現在時刻から）</label>
+          <div className="flex flex-wrap gap-2">
+            {DURATION_PRESETS.map((preset) => (
+              <Button key={preset.minutes} size="sm" variant="secondary" onClick={() => setRangeFromNow(preset.minutes)}>
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
       </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">やったこと</label>
-          <Textarea
-            placeholder="やったことを入力してください"
-            value={completedTasks}
-            onChange={(event) => setCompletedTasks(event.target.value)}
-            onKeyDown={(event) => handleTaskKeyDown(event, completedTasks, setCompletedTasks)}
-            className="min-h-32"
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">次にやること</label>
-          <Textarea
-            placeholder="次にやることを入力してください"
-            value={nextTasks}
-            onChange={(event) => setNextTasks(event.target.value)}
-            onKeyDown={(event) => handleTaskKeyDown(event, nextTasks, setNextTasks)}
-            className="min-h-32"
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-muted-foreground mb-2">次にやること</label>
+        <Textarea
+          placeholder="次にやることを入力してください"
+          value={nextTasks}
+          onChange={(event) => setNextTasks(event.target.value)}
+          onKeyDown={(event) => handleTaskKeyDown(event, nextTasks, setNextTasks)}
+          className="min-h-48"
+        />
       </div>
 
 
@@ -584,8 +549,10 @@ ${formatTaskBlock(nextTasks)}`
 
 
       <p className="text-center text-sm text-muted-foreground">
-        コピー後、「次にやること」は「やったこと」に移動します。
+        コピー後、「次にやること」がクリアされます。
       </p>
+        </div>
+      </div>
     </div>
   )
 }
