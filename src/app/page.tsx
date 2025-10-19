@@ -168,19 +168,6 @@ export default function SlackTaskReporter() {
     setEndTime(formatTimeForInput(end))
   }
 
-  const setStartToNow = () => {
-    const now = new Date()
-    setStartTime(formatTimeForInput(now))
-  }
-
-  const setEndByDuration = (minutes: number) => {
-    const today = formatDateForInput(new Date())
-    const base = parseDateTime(today, startTime)
-    if (!base) return
-    const next = new Date(base.getTime() + minutes * 60 * 1000)
-    setEndTime(formatTimeForInput(next))
-  }
-
   const setCurrentTimeAsStart = () => {
     const now = new Date()
     setStartTime(formatTimeForInput(now))
@@ -285,7 +272,7 @@ ${formatTaskBlock(nextTasks)}`
     setter: Dispatch<SetStateAction<string>>
   ) => {
     const textarea = event.currentTarget
-    const { selectionStart, selectionEnd } = textarea
+    const { selectionStart } = textarea
 
     const replaceLine = (lineStart: number, lineEnd: number, newLine: string) => {
       const before = value.slice(0, lineStart)
